@@ -24,13 +24,22 @@ typedef struct {
 } process_data_t;
 
 typedef struct {
+    int * fd;
+    int * numElements;
+    int elementSizeInBytes;
+} fifo_t;
+
+typedef struct {
     char const * const filename;
+    fifo_t * fifo;
+    //int * fd;
 } writing_args_t;
 
 typedef struct {
-    char key[3];
-    float value;
-} key_value_pair_t;
+    process_data_t * processData;
+    fifo_t * fifo;
+    //int * fd;
+} cpu_scheduler_args_t;
 
 sem_t writeToFileSem; // Semaphores
 pthread_t tidA, tidB; // Thread IDs
@@ -40,6 +49,7 @@ void initializeData(process_data_t *processData);
 void initializeSemaphore();
 void *simulateCpuScheduler(void *param);
 void *writeToFile(void *param);
+void writeToFIFO(fifo_t * fifo, char * description, float value);
 
 int main(int argc, char*argv[])
 {
@@ -48,30 +58,54 @@ int main(int argc, char*argv[])
         printf("Please supply 1 argument: the output file name.\n"); exit(1);
     }
     
-    writing_args_t writingArgs = {argv[1]};
+    initializeSemaphore();
+    
+    if(mkfifo(FIFO_PATH, 0666) == -1)
+    {
+        printf("Issue creating mkfifo.\n"); exit(1);
+    }
+    
+    int fd = open(FIFO_PATH, O_RDWR);
+    if(fd == -1)
+    {
+        perror("Error opening FIFO\n"); exit(1);
+    }
+    
+    int numElements = 0;
+    
+    fifo_t fifo = {&fd, &numElements, 100};
+    
+    writing_args_t writingArgs = {argv[1], &fifo};
     
     process_data_t *processData;
     processData = malloc(sizeof(process_data_t)*NUM_PROCESSES);// Allocate Memory For Process Data
-    
     initializeData(processData);
-    initializeSemaphore();
     
-    //if(mkfifo(FIFO_PATH, 0666) == -1)
-    //{
-    //    printf("Issue creating mkfifo.\n"); exit(1);
-    //}
+    cpu_scheduler_args_t cpuArgs = {processData, &fifo};
     
     pthread_attr_init(&attr); // Get the default attributes
 
-    pthread_create(&tidA, &attr, simulateCpuScheduler, processData); // Creates Thread A
+    pthread_create(&tidA, &attr, simulateCpuScheduler, &cpuArgs); // Creates Thread A
     pthread_create(&tidB, &attr, writeToFile, &writingArgs); // Creates Thread B
 
     // Wait For Thread B To Finish
     if(pthread_join(tidB, NULL) != 0)
     {
-        printf("Issue joining Thread B\n"); exit(1);
+        perror("Issue joining Thread B\n"); exit(1);
     }
-
+    
+    // Close FIFO
+    if(close(fd) == -1)
+    {
+        perror("Issue closing FIFO.\n"); exit(1);
+    }
+    
+    // Delete FIFO name and file from filesystem
+    if(unlink(FIFO_PATH) == -1)
+    {
+        perror("Issue deleting FIFO name and file.\n"); exit(1);
+    }
+    
     // Free Allocated Memory
     free(processData);
 
@@ -80,17 +114,20 @@ int main(int argc, char*argv[])
 
 void *simulateCpuScheduler(void *param)
 {
-    process_data_t *processData = param;
+    cpu_scheduler_args_t *parameters = param;
+    process_data_t *processData = parameters->processData;
     
     unsigned int time = 0; // Represents CPU ticks
     
-    //int fd = open(FIFO_PATH, O_WRONLY); // Open mkfifo Pipe With Write Only Permission
+    // CPU Calculation Descriptors
+    char averageWaitingTimeDescription[] = "Average Waiting Time";
+    char averageTurnaroundTimeDescription[] = "Average Turn-around Time";
     
     // Initialize Variables To Calculate Average Waiting Time and Average Turn-around Time 
-    double waitingTime = 0;
-    double turnaroundTime = 0;
-    double averageWaitingTime = 0;
-    double averageTurnaroundTime = 0;
+    float waitingTime = 0;
+    float turnaroundTime = 0;
+    float averageWaitingTime = 0;
+    float averageTurnaroundTime = 0;
     
     int indexOfSmallestCpuBurstTime;
     int numProcessesComplete = 0;
@@ -137,15 +174,9 @@ void *simulateCpuScheduler(void *param)
     averageWaitingTime = waitingTime / NUM_PROCESSES; // Calculate Average Waiting Time
     averageTurnaroundTime = turnaroundTime / NUM_PROCESSES; // Calculate Average Turn-around Time
     
-    printf("Average waiting time = %f \n", averageWaitingTime);
-    printf("Average turn-around time = %f \n", averageTurnaroundTime);
-    
-    // Push to FIFO
-    //key_value_pair_t averageWaitingTime_t = {"AWT", averageWaitingTime};
-    //key_value_pair_t *test;
-
-    //write(fd, &averageWaitingTime, sizeof(double));
-    //close(fd);
+    // Push Average Waiting Time To FIFO
+    writeToFIFO(parameters->fifo, averageWaitingTimeDescription, averageWaitingTime);
+    writeToFIFO(parameters->fifo, averageTurnaroundTimeDescription, averageTurnaroundTime);
     
     sem_post(&writeToFileSem);
     
@@ -155,6 +186,7 @@ void *simulateCpuScheduler(void *param)
 void *writeToFile(void *param)
 {
     writing_args_t *parameters = param;
+    
     FILE* writeFile = fopen(parameters->filename, "w");
     if(!writeFile)
     {
@@ -162,23 +194,48 @@ void *writeToFile(void *param)
        exit(1);
     }
     
-    //int fd = open(FIFO_PATH, O_RDONLY); // Open mkfifo Pipe With Read Only Permission
-
     sem_wait(&writeToFileSem);
     
-    //double *averageWaitingTime;
-    //read(fd, averageWaitingTime, sizeof(double));
-    //printf("hi -> %f <-\n", *averageWaitingTime);
+    // Read From FIFO
+    char buffer[parameters->fifo->elementSizeInBytes];
+    int i;
+    for(i = 0; i < *parameters->fifo->numElements; ++i)
+    {
+        if(read(*parameters->fifo->fd, buffer, sizeof(buffer)) == -1) // Read Into Buffer
+        {
+            perror("Failed To Read From FIFO."); exit(1);
+        }
+        fputs(buffer, writeFile); // Write To Output File
+        if(ferror(writeFile))
+        {
+            printf("Error Writing to File.\n");
+        }
+    }
 
-    fputs("hello12345", writeFile);
-
-    fclose(writeFile); // Close FILE*
-    //close(fd);
+    if(fclose(writeFile) == EOF) // Close The File
+    {
+        perror("Failed To Close File."); exit(1);
+    }
     
+    // Cancel Threads On Completion
     pthread_cancel(tidA);
     pthread_cancel(tidB);
 
     return 0;
+}
+
+void writeToFIFO(fifo_t * fifo, char * description, float value)
+{
+    char buffer[fifo->elementSizeInBytes];
+    if(snprintf(buffer, sizeof(buffer), "%s = %f.\n", description, value) < 0)
+    {
+        perror("Error writing to buffer."); exit(1);
+    }
+    if(write(*fifo->fd, buffer, sizeof(buffer)) == -1)
+    {
+        perror("Failed to write to FIFO."); exit(1);
+    }
+    *fifo->numElements += 1;
 }
 
 void initializeData(process_data_t *processData)
