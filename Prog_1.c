@@ -1,6 +1,10 @@
 /*
  * Author: Corey Stidston
- * Compilation method:
+ * Compilation method: For compiling this source code, you should use two flags, -pthread and -lrt
+ * e.g:     gcc Prog_1.c -pthread -lrt
+ * When executing Prog_1, provide the output txt file name
+ * i.e:     ./a.out output.txt
+ * The program will use output.txt as the output
  */
 
 #include <stdlib.h>
@@ -12,7 +16,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
-
 #define NUM_PROCESSES 7
 #define FIFO_PATH "/tmp/prog1fifo"
 
@@ -32,13 +35,11 @@ typedef struct {
 typedef struct {
     char const * const filename;
     fifo_t * fifo;
-    //int * fd;
 } writing_args_t;
 
 typedef struct {
     process_data_t * processData;
     fifo_t * fifo;
-    //int * fd;
 } cpu_scheduler_args_t;
 
 sem_t writeToFileSem; // Semaphores
