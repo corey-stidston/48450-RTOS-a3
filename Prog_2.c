@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #define BUFFER_SIZE 1024
 #define MAX_NUM_PROCESSES 20
@@ -36,6 +37,14 @@ void writeToFileHelper(char * buffer, FILE * writeFile);
 void printSequence(FILE * writeFile, int * sequence, int upperBound);
 void printExtractedData();
 
+void signalHandler(int signum)
+{
+    if (signum == SIGUSR1)
+    {
+        printf("Writing to output file has finished!\n");
+    }
+}
+
 int main(int argc, char*argv[])
 {
     if(argc != 3)
@@ -43,6 +52,8 @@ int main(int argc, char*argv[])
         printf("Please supply two arguments, an input filename e.g. 'input.txt' and an output filename e.g. 'output.txt'.\n");
         exit(0);
     }
+    
+    signal(SIGUSR1, signalHandler);
     
     readFromFile(argv[1]);
     //printExtractedData();
@@ -141,14 +152,14 @@ int detectCpuDeadlock(int * processSequence, int * deadlockedProcesses)
             // 1. Determine Whether Particular Process Has Already Finished.
             if(!finishVector[j])
             {
-                // Check Whether Request <= Available
+                // 2. Check Whether Request <= Available
                 if(requestMatrix[j][RESOURCE_A] <= availabilityVector[RESOURCE_A] && requestMatrix[j][RESOURCE_B] <= availabilityVector[RESOURCE_B] && requestMatrix[j][RESOURCE_C] <= availabilityVector[RESOURCE_C])
                 {
-                    // Availability = Availability + Allocation
+                    // 3. Availability = Availability + Allocation
                     availabilityVector[RESOURCE_A] += allocationMatrix[j][RESOURCE_A];
                     availabilityVector[RESOURCE_B] += allocationMatrix[j][RESOURCE_B];
                     availabilityVector[RESOURCE_C] += allocationMatrix[j][RESOURCE_C];
-                    finishVector[j] = true;
+                    finishVector[j] = true; // 4. Mark As Finished
                     
                     processSequence[numFinishedProcesses++] = j;
                     if(numFinishedProcesses == numProcesses)
@@ -204,6 +215,8 @@ void writeToFile(int numFinishedProcesses, int * processSequence, int * deadlock
     {
         perror("Failed To Close File."); exit(1);
     }
+    
+    raise(SIGUSR1);
 }
 
 void writeToFileHelper(char * buffer, FILE * writeFile)
