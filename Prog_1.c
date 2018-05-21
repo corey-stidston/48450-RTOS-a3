@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+
 #define NUM_PROCESSES 7
 #define FIFO_PATH "/tmp/prog1fifo"
 
@@ -107,7 +108,7 @@ int main(int argc, char*argv[])
         perror("Issue deleting FIFO name and file.\n"); exit(1);
     }
     
-    // Free Allocated Memory
+    // Free Dynamically Allocated Memory
     free(processData);
 
     return(0);
