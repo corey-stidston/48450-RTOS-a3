@@ -47,11 +47,11 @@ sem_t writeToFileSem; // Semaphores
 pthread_t tidA, tidB; // Thread IDs
 pthread_attr_t attr; // Thread attributes
 
-void initializeData(process_data_t *processData);
-void initializeSemaphore();
-void *simulateCpuScheduler(void *param);
-void *writeToFile(void *param);
-void writeToFIFO(fifo_t * fifo, char * description, float value);
+void initializeData(process_data_t *processData); // Initializes Process Data
+void initializeSemaphore(); // Initializes Semaphore
+void *simulateCpuScheduler(void *param); // Simulates CPU Scheduling
+void *writeToFile(void *param); // Writes Output To File
+void writeToFIFO(fifo_t * fifo, char * description, float value); // Writes Data To FIFO
 
 int main(int argc, char*argv[])
 {
@@ -114,6 +114,9 @@ int main(int argc, char*argv[])
     return(0);
 }
 
+/*
+ * void * param - pointer to a struct of parameters for the simulateCpuScheduler thread
+ */
 void *simulateCpuScheduler(void *param)
 {
     cpu_scheduler_args_t *parameters = param;
@@ -185,6 +188,9 @@ void *simulateCpuScheduler(void *param)
     return 0;
 }
 
+/*
+ * void * param - pointer to a struct of parameters for the writeToFile thread
+ */
 void *writeToFile(void *param)
 {
     writing_args_t *parameters = param;
@@ -226,6 +232,11 @@ void *writeToFile(void *param)
     return 0;
 }
 
+/*
+ * fifo_t * fifo - pointer to a fifo structure
+ * char * description - pointer to an array of characters which describe the value
+ * float value - value to write to the FIFO
+ */
 void writeToFIFO(fifo_t * fifo, char * description, float value)
 {
     char buffer[fifo->elementSizeInBytes];
@@ -240,6 +251,9 @@ void writeToFIFO(fifo_t * fifo, char * description, float value)
     *fifo->numElements += 1;
 }
 
+/*
+ * process_data_t * processData - pointer to an array of struct which represents the processes and their data
+ */
 void initializeData(process_data_t *processData)
 {
     processData[0].pId = 1; processData[0].arriveTime = 8; processData[0].burstTime = 10; processData[0].remainingBurstTime = 10;
