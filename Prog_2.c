@@ -29,14 +29,16 @@ unsigned int allocationMatrix[MAX_NUM_PROCESSES][NUM_RESOURCES];
 unsigned int requestMatrix[MAX_NUM_PROCESSES][NUM_RESOURCES];
 unsigned int numProcesses;
 
-void readFromFile(char * filename);
-void extractData(unsigned int linePos, int * processId, char * found);
-int detectCpuDeadlock(int * processSequence, int * deadlockedProcesses);
-void writeToFile(int numFinishedProcesses, int * processSequence, int * deadlockedProcesses, char * filename);
-void writeToFileHelper(char * buffer, FILE * writeFile);
-void printSequence(FILE * writeFile, int * sequence, int upperBound);
-void printExtractedData();
+void readFromFile(char * filename); // Reads From The Input File
+void extractData(unsigned int linePos, int * processId, char * found); // Extracts Data From The File
+bool detectCpuDeadlock(int * processSequence, int * deadlockedProcesses, int * numFinishedProcesses); // Detects CPU Deadlock
+void writeToFile(int numFinishedProcesses, int * processSequence, int * deadlockedProcesses, char * filename); // Writes To File
+void writeToFileHelper(char * buffer, FILE * writeFile); // Helper Method For Writing To File (includes error handling)
+void printSequence(FILE * writeFile, int * sequence, int upperBound); // Writes Sequence Of Processes To File
 
+/*
+ *  int signum - Is The Signal Id
+ */
 void signalHandler(int signum)
 {
     if (signum == SIGUSR1)
@@ -53,19 +55,22 @@ int main(int argc, char*argv[])
         exit(0);
     }
     
-    signal(SIGUSR1, signalHandler);
-    
-    readFromFile(argv[1]);
-    //printExtractedData();
-    
     int processSequence[MAX_NUM_PROCESSES];
     int deadlockedProcesses[MAX_NUM_PROCESSES];
-    int numFinishedProcesses = detectCpuDeadlock(processSequence, deadlockedProcesses);
-    writeToFile(numFinishedProcesses, processSequence, deadlockedProcesses, argv[2]);
+    int numFinishedProcesses;
+    
+    signal(SIGUSR1, signalHandler); // Assign Handler Method to SIGUSR1
+    
+    readFromFile(argv[1]); // Read From File
+    detectCpuDeadlock(processSequence, deadlockedProcesses, &numFinishedProcesses); // Detect CPU Deadlock
+    writeToFile(numFinishedProcesses, processSequence, deadlockedProcesses, argv[2]); // Write Data To File
     
     return(0);
 }
 
+/*
+ *  char * filename - pointer to a filename
+ */
 void readFromFile(char * filename)
 {
     char lineFromFile[BUFFER_SIZE];
@@ -85,15 +90,15 @@ void readFromFile(char * filename)
     {
         if(lineNo > 2) // Ignore Column Names
         {
-            truncatedLine = strdup(lineFromFile);
+            truncatedLine = strdup(lineFromFile); // Return Null Terminated Byte String
             
             int linePos = 0;
             int processId;
-            while((lineSegment = strsep(&truncatedLine, delimiters)) != NULL )
+            while((lineSegment = strsep(&truncatedLine, delimiters)) != NULL ) // Slice String On Spaces and Tabs
             {
                 if(strlen(lineSegment) >= 1) // Filter Out Unuseful Information
                 {
-                    extractData(linePos, &processId, lineSegment);
+                    extractData(linePos, &processId, lineSegment); // Extract and Store Data
                     ++linePos;
                 }
             }
@@ -102,47 +107,57 @@ void readFromFile(char * filename)
         ++lineNo;
     }
     
-    
-    free(truncatedLine);
+    free(truncatedLine); // Free Dynamically Allocated Memory
 }
 
-void extractData(unsigned int linePos, int * processId, char * found)
+/*
+ * unsigned int linePos - integer representing the line position in the input file
+ * int * processId - pointer to an integer representing the current process id
+ * char * lineSegment - pointer to a char array representing a segment of the line (critical value)
+ */
+void extractData(unsigned int linePos, int * processId, char * lineSegment)
 {
+    /* Store Data Based On Line Position */
     switch(linePos)
     {
         case 0: {
-                *processId = atoi(&found[1]);
+                *processId = atoi(&lineSegment[1]);
                 if(*processId > MAX_NUM_PROCESSES)
                 {
                     printf("Error: this program does not accept more than %i number of processes.\n", MAX_NUM_PROCESSES); exit(1);
                 }
             }
             break;
-        case 1: allocationMatrix[*processId][RESOURCE_A] = atoi(found);
+        case 1: allocationMatrix[*processId][RESOURCE_A] = atoi(lineSegment);
             break;
-        case 2: allocationMatrix[*processId][RESOURCE_B] = atoi(found);
+        case 2: allocationMatrix[*processId][RESOURCE_B] = atoi(lineSegment);
             break;
-        case 3: allocationMatrix[*processId][RESOURCE_C] = atoi(found);
+        case 3: allocationMatrix[*processId][RESOURCE_C] = atoi(lineSegment);
             break;
-        case 4: requestMatrix[*processId][RESOURCE_A] = atoi(found);
+        case 4: requestMatrix[*processId][RESOURCE_A] = atoi(lineSegment);
             break;
-        case 5: requestMatrix[*processId][RESOURCE_B] = atoi(found);
+        case 5: requestMatrix[*processId][RESOURCE_B] = atoi(lineSegment);
             break;
-        case 6: requestMatrix[*processId][RESOURCE_C] = atoi(found);
+        case 6: requestMatrix[*processId][RESOURCE_C] = atoi(lineSegment);
             break;
-        case 7: availabilityVector[RESOURCE_A] = atoi(found);
+        case 7: availabilityVector[RESOURCE_A] = atoi(lineSegment);
             break;
-        case 8: availabilityVector[RESOURCE_B] = atoi(found);
+        case 8: availabilityVector[RESOURCE_B] = atoi(lineSegment);
             break;
-        case 9: availabilityVector[RESOURCE_C] = atoi(found);
+        case 9: availabilityVector[RESOURCE_C] = atoi(lineSegment);
             break;
     }
 }
 
-int detectCpuDeadlock(int * processSequence, int * deadlockedProcesses)
+/*
+ * int * processSequence - pointer to an array of integers representing the process sequence
+ * int * deadlockedProcesses - pointer to an array of integers representing the process sequence
+ * int * numFinishedProcesses - pointer to a integer representing the number of finished processes
+ */
+bool detectCpuDeadlock(int * processSequence, int * deadlockedProcesses, int * numFinishedProcesses)
 {
     bool finishVector[MAX_NUM_PROCESSES] = {false};
-    int numFinishedProcesses = 0;
+    *numFinishedProcesses = 0;
     int i, j;
     
     for(i = 0; i < numProcesses; i++)
@@ -159,12 +174,13 @@ int detectCpuDeadlock(int * processSequence, int * deadlockedProcesses)
                     availabilityVector[RESOURCE_A] += allocationMatrix[j][RESOURCE_A];
                     availabilityVector[RESOURCE_B] += allocationMatrix[j][RESOURCE_B];
                     availabilityVector[RESOURCE_C] += allocationMatrix[j][RESOURCE_C];
+                    
                     finishVector[j] = true; // 4. Mark As Finished
                     
-                    processSequence[numFinishedProcesses++] = j;
-                    if(numFinishedProcesses == numProcesses)
+                    processSequence[(*numFinishedProcesses)++] = j;
+                    if(*numFinishedProcesses == numProcesses)
                     {
-                        return numFinishedProcesses;
+                        return false;;
                     }
                 }
             }
@@ -180,9 +196,15 @@ int detectCpuDeadlock(int * processSequence, int * deadlockedProcesses)
         }
     }
     
-    return numFinishedProcesses;
+    return true;
 }
 
+/*
+ * int numFinishedProcesses - integer representing the number of finished processes
+ * int * processSequence - pointer to an array of integers representing the process sequence
+ * int * deadlockedProcesses - pointer to an array of integers representing the process sequence
+ * char * filename - pointer to an array of chars representing the filename
+ */
 void writeToFile(int numFinishedProcesses, int * processSequence, int * deadlockedProcesses, char * filename)
 {
     char buffer[BUFFER_SIZE];
@@ -216,9 +238,13 @@ void writeToFile(int numFinishedProcesses, int * processSequence, int * deadlock
         perror("Failed To Close File."); exit(1);
     }
     
-    raise(SIGUSR1);
+    raise(SIGUSR1); // Raise User Defined Signal 1
 }
 
+/*
+ * char * buffer - pointer to an array of characters representing a char buffer
+ * FILE * writeFile - file pointer
+ */
 void writeToFileHelper(char * buffer, FILE * writeFile)
 {
     if(fputs(buffer, writeFile) == EOF)
@@ -227,6 +253,11 @@ void writeToFileHelper(char * buffer, FILE * writeFile)
     }
 }
 
+/*
+ * FILE * writeFile - file pointer
+ * int * sequence - pointer to an array of integers representing a sequence of processes
+ * int upperBound - integer representing the upper bound of a for loop
+ */
 void printSequence(FILE * writeFile, int * sequence, int upperBound)
 {
     char buffer[BUFFER_SIZE];
@@ -250,19 +281,4 @@ void printSequence(FILE * writeFile, int * sequence, int upperBound)
         }
         writeToFileHelper(buffer, writeFile);
     }
-}
-
-void printExtractedData()
-{
-    printf("Number of processes %i.\n", numProcesses);
-    
-    int i;
-    for(i = 0; i < numProcesses; i++)
-    {
-        printf("Process %i:\n", i);
-        printf("\tAlloc. Mx. A: %i, B: %i, C: %i.\n", allocationMatrix[i][0],allocationMatrix[i][1], allocationMatrix[i][2]);
-        printf("\tReque. Mx. A: %i, B: %i, C: %i.\n", requestMatrix[i][0],requestMatrix[i][1], requestMatrix[i][2]);
-    }
-
-    printf("Availability Vector: A: %i, B: %i, C: %i.\n", availabilityVector[0], availabilityVector[1], availabilityVector[2]);
 }
